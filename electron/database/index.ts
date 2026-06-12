@@ -123,6 +123,128 @@ async function seedInitialData() {
     ];
     await partRepo.save(parts);
 
+    const statusRepo = dataSource.getRepository(DeviceStatus);
+    const deviceStatuses = [
+      { deviceCode: 'CDU-001', temperature: 365, pressure: 0.25, level: 65, flowRate: 520, currentOutput: 480, runHours: 1850, healthStatus: 'normal' },
+      { deviceCode: 'CDU-002', temperature: 0, pressure: 0, level: 0, flowRate: 0, currentOutput: 0, runHours: 3200, healthStatus: 'maintenance' },
+      { deviceCode: 'FCC-001', temperature: 505, pressure: 0.32, level: 72, flowRate: 210, currentOutput: 195, runHours: 2680, healthStatus: 'warning' },
+      { deviceCode: 'FCC-002', temperature: 0, pressure: 0, level: 0, flowRate: 0, currentOutput: 0, runHours: 1500, healthStatus: 'idle' },
+      { deviceCode: 'HDT-001', temperature: 405, pressure: 13.5, level: 58, flowRate: 185, currentOutput: 170, runHours: 3100, healthStatus: 'normal' },
+      { deviceCode: 'HDT-002', temperature: 355, pressure: 6.8, level: 70, flowRate: 125, currentOutput: 115, runHours: 2200, healthStatus: 'normal' },
+      { deviceCode: 'VR-001', temperature: 400, pressure: 0.005, level: 62, flowRate: 410, currentOutput: 380, runHours: 1950, healthStatus: 'normal' },
+      { deviceCode: 'DEL-001', temperature: 0, pressure: 0, level: 0, flowRate: 0, currentOutput: 0, runHours: 2800, healthStatus: 'idle' }
+    ];
+    await statusRepo.save(deviceStatuses);
+
+    const orderRepo = dataSource.getRepository(MaintenanceWorkOrder);
+    const workOrders = [
+      {
+        orderNumber: 'WO-20240610-001',
+        deviceCode: 'CDU-001',
+        workType: '预防性维护',
+        description: '常压蒸馏装置1号例行巡检及密封件检查更换',
+        spareParts: JSON.stringify([{ code: 'SP-001', quantity: 2, name: '高温油泵密封件' }]),
+        priority: 'medium',
+        status: 'completed',
+        assignedTeam: '维修一班',
+        assignee: '孙伟',
+        plannedDate: '2024-06-08',
+        completedDate: '2024-06-09',
+        laborHours: 6,
+        remarks: '常规预防性维护，已更换密封件2套'
+      },
+      {
+        orderNumber: 'WO-20240611-002',
+        deviceCode: 'FCC-001',
+        workType: '故障维修',
+        description: '催化裂化装置1号再生器料位偏高，检查料腿疏通',
+        spareParts: JSON.stringify([{ code: 'SP-003', quantity: 3, name: '温度变送器PT100' }]),
+        priority: 'high',
+        status: 'in_progress',
+        assignedTeam: '维修一班',
+        assignee: '王海峰',
+        plannedDate: '2024-06-11',
+        laborHours: 8
+      },
+      {
+        orderNumber: 'WO-20240612-003',
+        deviceCode: 'HDT-001',
+        workType: '预防性维护',
+        description: '加氢裂化装置1号高压换热器定期检测',
+        spareParts: JSON.stringify([{ code: 'SP-004', quantity: 2, name: '压力传感器' }, { code: 'SP-005', quantity: 1, name: '换热器管束' }]),
+        priority: 'medium',
+        status: 'pending',
+        plannedDate: '2024-06-15',
+        laborHours: 12
+      },
+      {
+        orderNumber: 'WO-20240612-004',
+        deviceCode: 'VR-001',
+        workType: '检查',
+        description: '减压蒸馏装置1号炉管壁厚检测',
+        spareParts: '',
+        priority: 'low',
+        status: 'pending',
+        plannedDate: '2024-06-18',
+        laborHours: 4
+      },
+      {
+        orderNumber: 'WO-20240609-005',
+        deviceCode: 'CDU-002',
+        workType: '大修',
+        description: '常压蒸馏装置2号年度大修，全面检查更换',
+        spareParts: JSON.stringify([{ code: 'SP-001', quantity: 4, name: '高温油泵密封件' }, { code: 'SP-002', quantity: 2, name: '压力容器安全阀' }, { code: 'SP-006', quantity: 500, name: '催化剂' }]),
+        priority: 'high',
+        status: 'in_progress',
+        assignedTeam: '维修二班',
+        assignee: '赵明辉',
+        plannedDate: '2024-06-05',
+        laborHours: 40
+      }
+    ];
+    await orderRepo.save(workOrders);
+
+    const alarmRepo = dataSource.getRepository(Alarm);
+    const alarms = [
+      {
+        deviceCode: 'HDT-001',
+        alarmCode: 'ALM-202406120930-001',
+        alarmLevel: 'warning',
+        parameter: '反应温度',
+        parameterKey: 'temperature',
+        thresholdValue: '420°C',
+        actualValue: 423.5,
+        status: 'active',
+        message: '加氢裂化1号反应温度偏高，请检查加热炉燃料流量'
+      },
+      {
+        deviceCode: 'FCC-001',
+        alarmCode: 'ALM-202406120945-002',
+        alarmLevel: 'info',
+        parameter: '塔顶压力',
+        parameterKey: 'pressure',
+        thresholdValue: '0.3MPa',
+        actualValue: 0.28,
+        status: 'acknowledged',
+        message: '催化裂化1号塔顶压力略低于正常值',
+        acknowledgedBy: '李志强',
+        acknowledgedAt: new Date(Date.now() - 3600000).toISOString(),
+        actionTaken: '已调整回流量'
+      },
+      {
+        deviceCode: 'VR-001',
+        alarmCode: 'ALM-202406121015-003',
+        alarmLevel: 'warning',
+        parameter: '再生器料位',
+        parameterKey: 'level',
+        thresholdValue: '80%',
+        actualValue: 82.3,
+        status: 'active',
+        message: '减压蒸馏1号塔底液位偏高'
+      }
+    ];
+    await alarmRepo.save(alarms);
+
     console.log('初始化数据已加载');
   }
 }

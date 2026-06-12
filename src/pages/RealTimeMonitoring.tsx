@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Card, Table, Tag, Button, Modal, Form, Input, Select, Space, message, Row, Col, Statistic, Progress, Alert, Badge, Tooltip, Divider, Empty } from 'antd';
+import { Card, Table, Tag, Button, Modal, Form, Input, Select, Space, message, Row, Col, Statistic, Progress, Alert, Badge, Tooltip, Divider, Empty, Descriptions } from 'antd';
 import {
   WarningOutlined, BellOutlined, SafetyOutlined, ThunderboltOutlined,
   CheckCircleOutlined, SoundOutlined, DashboardOutlined, FireOutlined,
@@ -26,9 +26,17 @@ const RealTimeMonitoring: React.FC = () => {
   const [form] = Form.useForm();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const initializedRef = useRef(false);
+
   useEffect(() => {
-    loadAll();
-    initHistoryData();
+    const init = async () => {
+      await loadAll();
+      if (!initializedRef.current) {
+        initHistoryData();
+        initializedRef.current = true;
+      }
+    };
+    init();
     intervalRef.current = setInterval(() => {
       simulateDataUpdate();
     }, 3000);
@@ -145,6 +153,32 @@ const RealTimeMonitoring: React.FC = () => {
                   const directionStr = direction === 'high' ? '超高' : '超低';
                   const message = `${device.name}${paramLabels[param]}${directionStr}报警: 当前${newVal.toFixed(1)}${paramUnits[param]}, 阈值${threshold}${paramUnits[param]}`;
 
+                  let actionType = '';
+                  let actionDetail = '';
+
+                  if (alarmLevel === 'critical') {
+                    if (param === 'temperature' && direction === 'high') {
+                      actionType = 'interlock_shutdown';
+                      actionDetail = `【联锁停车】${device.name}温度严重超高(${newVal.toFixed(1)}°C)，已触发联锁停车保护系统，切断进料，开启紧急冷却`;
+                    } else if (param === 'pressure' && direction === 'high') {
+                      actionType = 'pressure_relief';
+                      actionDetail = `【泄压动作】${device.name}压力严重超高(${newVal.toFixed(2)}MPa)，已自动打开紧急泄压阀，压力正在回落`;
+                    } else if (param === 'level' && direction === 'high') {
+                      actionType = 'valve_adjust';
+                      actionDetail = `【阀门调节】${device.name}液位严重超高(${newVal.toFixed(1)}%)，已自动关小进料阀，开大出料阀`;
+                    } else if (param === 'temperature' && direction === 'low') {
+                      actionType = 'heating_increase';
+                      actionDetail = `【加热调节】${device.name}温度严重偏低(${newVal.toFixed(1)}°C)，已自动增大加热燃料气流量`;
+                    } else if (param === 'pressure' && direction === 'low') {
+                      actionType = 'pressure_increase';
+                      actionDetail = `【增压动作】${device.name}压力严重偏低(${newVal.toFixed(2)}MPa)，已自动启动增压泵`;
+                    } else if (param === 'level' && direction === 'low') {
+                      actionType = 'valve_adjust';
+                      actionDetail = `【阀门调节】${device.name}液位严重偏低(${newVal.toFixed(1)}%)，已自动开大进料阀`;
+                    }
+                    interlockRecords.push(actionDetail);
+                  }
+
                   const newAlarm: Alarm = {
                     deviceCode: st.deviceCode,
                     alarmCode: `ALM-${dayjs().format('YYYYMMDDHHmmss')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
@@ -155,18 +189,10 @@ const RealTimeMonitoring: React.FC = () => {
                     actualValue: newVal,
                     message,
                     status: 'active',
+                    actionType,
+                    actionDetail,
                     createdAt: new Date().toISOString()
                   };
-
-                  if (alarmLevel === 'critical') {
-                    if (param === 'temperature' && direction === 'high') {
-                      interlockRecords.push(`【联锁动作】${device.name}温度严重超高(${newVal.toFixed(1)}°C)，已触发联锁停车保护`);
-                    } else if (param === 'pressure' && direction === 'high') {
-                      interlockRecords.push(`【联锁动作】${device.name}压力严重超高(${newVal.toFixed(2)}MPa)，已自动打开泄压阀`);
-                    } else if (param === 'level' && direction === 'high') {
-                      interlockRecords.push(`【联锁动作】${device.name}液位严重超高(${newVal.toFixed(1)}%)，已自动调节进料阀开度`);
-                    }
-                  }
 
                   pendingAlarms.push(newAlarm);
                 }
@@ -267,11 +293,15 @@ const RealTimeMonitoring: React.FC = () => {
     { title: '参数', dataIndex: 'parameter', key: 'parameter', width: 100 },
     { title: '阈值', dataIndex: 'thresholdValue', key: 'thresholdValue', width: 80 },
     { title: '实际值', dataIndex: 'actualValue', key: 'actualValue', width: 80, render: (v: number, r: any) => <span style={{ color: r.alarmLevel === 'critical' ? '#ff4d4f' : '#faad14', fontWeight: 600 }}>{typeof v === 'number' ? v.toFixed(1) : v}</span> },
+    { title: '联锁动作', dataIndex: 'actionType', key: 'actionType', width: 90, render: (t: string, r: Alarm) => r.alarmLevel === 'critical' && r.actionDetail ? <Badge status="error" text="已联锁" /> : '-' },
     { title: '报警信息', dataIndex: 'message', key: 'message', ellipsis: true },
     { title: '时间', dataIndex: 'createdAt', key: 'createdAt', width: 120, render: (t: string) => dayjs(t).format('HH:mm:ss') },
     { title: '状态', dataIndex: 'status', key: 'status', width: 80, render: (s: string) => s === 'active' ? <Badge status="error" text={<span className="alarm-flash">活动</span>} /> : <Tag color="default">已确认</Tag> },
-    { title: '操作', key: 'action', width: 120, render: (_: any, r: Alarm) => r.status === 'active' && (
-      <Button size="small" type="primary" onClick={() => { setAcknowledgeModal(r); form.resetFields(); }}>确认处理</Button>
+    { title: '操作', key: 'action', width: 140, render: (_: any, r: Alarm) => (
+      <Space size="small">
+        {r.status === 'active' && <Button size="small" type="primary" onClick={() => { setAcknowledgeModal(r); form.resetFields(); }}>确认处理</Button>}
+        <Button size="small" onClick={() => setAcknowledgeModal(r)}>详情</Button>
+      </Space>
     )}
   ];
 
@@ -478,12 +508,16 @@ const RealTimeMonitoring: React.FC = () => {
       </Card>
 
       <Modal
-        title="确认报警处理"
+        title={acknowledgeModal?.status === 'active' ? '确认报警处理' : '报警详情'}
         open={!!acknowledgeModal}
-        onOk={handleAcknowledge}
+        onOk={acknowledgeModal?.status === 'active' ? handleAcknowledge : () => setAcknowledgeModal(null)}
         onCancel={() => setAcknowledgeModal(null)}
-        okText="确认处理"
-        width={520}
+        okText={acknowledgeModal?.status === 'active' ? '确认处理' : '关闭'}
+        cancelText="关闭"
+        width={560}
+        footer={acknowledgeModal?.status === 'active' ? undefined : [
+          <Button key="close" onClick={() => setAcknowledgeModal(null)}>关闭</Button>
+        ]}
       >
         {acknowledgeModal && (
           <div>
@@ -494,16 +528,47 @@ const RealTimeMonitoring: React.FC = () => {
               style={{ marginBottom: 16 }}
             />
             <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="装置">{acknowledgeModal.deviceCode}</Descriptions.Item>
+              <Descriptions.Item label="装置">{devices.find(d => d.code === acknowledgeModal.deviceCode)?.name || acknowledgeModal.deviceCode}</Descriptions.Item>
               <Descriptions.Item label="参数">{acknowledgeModal.parameter}</Descriptions.Item>
               <Descriptions.Item label="阈值">{acknowledgeModal.thresholdValue}</Descriptions.Item>
               <Descriptions.Item label="实际值">{typeof acknowledgeModal.actualValue === 'number' ? acknowledgeModal.actualValue.toFixed(1) : acknowledgeModal.actualValue}</Descriptions.Item>
+              <Descriptions.Item label="报警时间">{dayjs(acknowledgeModal.createdAt).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
+              <Descriptions.Item label="状态">
+                {acknowledgeModal.status === 'active' ? <Badge status="error" text="活动" /> : <Tag color="default">已确认</Tag>}
+              </Descriptions.Item>
             </Descriptions>
-            <Form form={form} layout="vertical">
-              <Form.Item name="action" label="处理措施" rules={[{ required: true, message: '请填写处理措施' }]}>
-                <Input.TextArea rows={3} placeholder="请描述已采取的处理措施" />
-              </Form.Item>
-            </Form>
+
+            {acknowledgeModal.actionDetail && (
+              <>
+                <Divider orientation="left" style={{ margin: '8px 0' }}>自动联锁动作</Divider>
+                <Alert
+                  type={acknowledgeModal.alarmLevel === 'critical' ? 'error' : 'warning'}
+                  showIcon
+                  icon={acknowledgeModal.actionType === 'interlock_shutdown' ? <CloseCircleOutlined /> : <SafetyOutlined />}
+                  message={acknowledgeModal.actionType === 'interlock_shutdown' ? '联锁停车' :
+                           acknowledgeModal.actionType === 'pressure_relief' ? '泄压动作' :
+                           acknowledgeModal.actionType === 'valve_adjust' ? '阀门调节' : '自动调节'}
+                  description={acknowledgeModal.actionDetail}
+                  style={{ marginBottom: 16 }}
+                />
+              </>
+            )}
+
+            {acknowledgeModal.status === 'acknowledged' && (
+              <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
+                <Descriptions.Item label="确认人">{acknowledgeModal.acknowledgedBy || '-'}</Descriptions.Item>
+                <Descriptions.Item label="确认时间">{acknowledgeModal.acknowledgedAt ? dayjs(acknowledgeModal.acknowledgedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</Descriptions.Item>
+                <Descriptions.Item label="处理措施">{acknowledgeModal.actionTaken || '-'}</Descriptions.Item>
+              </Descriptions>
+            )}
+
+            {acknowledgeModal.status === 'active' && (
+              <Form form={form} layout="vertical">
+                <Form.Item name="action" label="处理措施" rules={[{ required: true, message: '请填写处理措施' }]}>
+                  <Input.TextArea rows={3} placeholder="请描述已采取的处理措施" />
+                </Form.Item>
+              </Form>
+            )}
           </div>
         )}
       </Modal>

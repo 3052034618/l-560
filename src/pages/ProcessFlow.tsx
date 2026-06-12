@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Card, Row, Col, Tag, Tooltip, Slider, Progress, Badge, List, Space, Button, Statistic, Alert } from 'antd';
+import { Card, Row, Col, Tag, Tooltip, Slider, Progress, Badge, List, Space, Button, Statistic, Alert, Descriptions, Divider } from 'antd';
 import {
   ThunderboltOutlined, WarningOutlined, CheckCircleOutlined,
   DashboardOutlined, FireOutlined, ExperimentOutlined,
   EnvironmentOutlined, PlayCircleOutlined, PauseCircleOutlined
 } from '@ant-design/icons';
 import * as echarts from 'echarts';
-import { useAppStore } from '@/store/appStore';
+import { useAppStore, Device, DeviceStatus } from '@/store/appStore';
 import { DEVICE_TYPES, HEALTH_STATUS } from '@/utils/constants';
 
 interface ProcessUnit {
@@ -18,6 +18,11 @@ interface ProcessUnit {
   width: number;
   height: number;
   deviceCode?: string;
+  description?: string;
+  device?: Device;
+  status?: DeviceStatus;
+  healthStatus?: string;
+  alarmCount?: number;
 }
 
 const ProcessFlow: React.FC = () => {

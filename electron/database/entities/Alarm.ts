@@ -5,20 +5,26 @@ export class Alarm {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ nullable: true })
+  alarmCode: string;
+
   @Column()
   deviceCode: string;
 
   @Column()
   parameter: string;
 
+  @Column({ nullable: true })
+  parameterKey: string;
+
   @Column()
   alarmLevel: string;
 
-  @Column({ type: 'real' })
-  thresholdValue: number;
+  @Column({ type: 'text', nullable: true })
+  thresholdValue: string;
 
   @Column({ type: 'real' })
-  actualValue: string;
+  actualValue: number;
 
   @Column({ default: 'active' })
   status: string;
@@ -34,6 +40,12 @@ export class Alarm {
 
   @Column({ nullable: true, type: 'text' })
   actionTaken: string;
+
+  @Column({ nullable: true })
+  actionType: string;
+
+  @Column({ nullable: true, type: 'text' })
+  actionDetail: string;
 
   @CreateDateColumn()
   createdAt: string;
