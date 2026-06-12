@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import {
-  Card, Table, Tag, Button, Modal, Form, Select, Input,
+  Card, Table, Tag, Button, Modal, Form, Select, Input, InputNumber,
   Space, message, Row, Col, Statistic, Tabs, Calendar,
   Badge, Tooltip, Popover, List, Avatar, Descriptions, Divider, DatePicker
 } from 'antd';

@@ -655,7 +655,7 @@ const MaintenanceManagement: React.FC = () => {
             <Divider orientation="left">工单进度</Divider>
             <Timeline
               items={[
-                { color: 'green', children: <div>工单创建<div style={{ color: '#8c8c8c', fontSize: 12 }}>{dayjs(detailDrawer.createdAt).format('YYYY-MM-DD HH:mm')}</div></div> },
+                { color: 'green', children: <div>工单创建<div style={{ color: '#8c8c8c', fontSize: 12 }}>{detailDrawer.createdAt ? dayjs(detailDrawer.createdAt).format('YYYY-MM-DD HH:mm') : detailDrawer.plannedDate || '-'}</div></div> },
                 detailDrawer.status !== 'pending' && { color: 'blue', children: <div>开始处理<div style={{ color: '#8c8c8c', fontSize: 12 }}>{detailDrawer.assignee || '负责人'}</div></div> },
                 detailDrawer.status === 'completed' && { color: 'green', children: <div>工单完成<div style={{ color: '#8c8c8c', fontSize: 12 }}>{detailDrawer.completedDate}</div></div> }
               ].filter(Boolean) as any}

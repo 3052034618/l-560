@@ -55,7 +55,12 @@
       "dist-electron"
     ],
     "win": {
-      "target": "nsis"
+      "target": ["dir", "zip"],
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }

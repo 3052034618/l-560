@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import dayjs from 'dayjs';
 
 export interface Device {
   id?: number;
@@ -89,6 +90,8 @@ export interface MaintenanceWorkOrder {
   completedDate?: string;
   laborHours: number;
   remarks?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SparePart {
@@ -149,6 +152,11 @@ export interface ProcessTransition {
   description: string;
 }
 
+export interface MonitoringDataPoint {
+  time: string;
+  value: number;
+}
+
 interface AppState {
   devices: Device[];
   deviceStatuses: DeviceStatus[];
@@ -161,9 +169,14 @@ interface AppState {
   shifts: ShiftItem[];
   shiftChanges: ShiftChangeItem[];
   transitions: ProcessTransition[];
+  historyData: Record<string, MonitoringDataPoint[]>;
+  historyDataInitialized: boolean;
   loading: boolean;
 
   setLoading: (loading: boolean) => void;
+  initHistoryData: () => void;
+  setHistoryData: (data: Record<string, MonitoringDataPoint[]>) => void;
+  updateHistoryData: (updater: (prev: Record<string, MonitoringDataPoint[]>) => Record<string, MonitoringDataPoint[]>) => void;
   loadDevices: () => Promise<void>;
   loadDeviceStatuses: () => Promise<void>;
   loadRawMaterials: () => Promise<void>;
@@ -201,9 +214,47 @@ export const useAppStore = create<AppState>((set, get) => ({
   shifts: [],
   shiftChanges: [],
   transitions: [],
+  historyData: {},
+  historyDataInitialized: false,
   loading: false,
 
   setLoading: (loading) => set({ loading }),
+
+  initHistoryData: () => {
+    const { deviceStatuses, devices, historyDataInitialized } = get();
+    if (historyDataInitialized) return;
+    if (!deviceStatuses.length || !devices.length) return;
+    const now = dayjs();
+    const initialData: Record<string, MonitoringDataPoint[]> = {};
+    deviceStatuses.forEach((st) => {
+      const device = devices.find((d) => d.code === st.deviceCode);
+      if (!device) return;
+      const baseValues = {
+        temperature: st.temperature || (device.temperatureMin + device.temperatureMax) / 2,
+        pressure: st.pressure || (device.pressureMin + device.pressureMax) / 2,
+        level: st.level || 60
+      };
+      ['temperature', 'pressure', 'level'].forEach((param) => {
+        const key = `${st.deviceCode}-${param}`;
+        const points: MonitoringDataPoint[] = [];
+        for (let i = 19; i >= 0; i--) {
+          const t = now.subtract(i * 3, 'second');
+          const delta = param === 'temperature' ? (Math.random() - 0.5) * 6 :
+                        param === 'pressure' ? (Math.random() - 0.5) * 0.03 :
+                        (Math.random() - 0.5) * 3;
+          points.push({
+            time: t.format('HH:mm:ss'),
+            value: Math.max(0, baseValues[param as keyof typeof baseValues] + delta)
+          });
+        }
+        initialData[key] = points;
+      });
+    });
+    set({ historyData: initialData, historyDataInitialized: true });
+  },
+
+  setHistoryData: (data) => set({ historyData: data }),
+  updateHistoryData: (updater) => set((state) => ({ historyData: updater(state.historyData) })),
 
   loadDevices: async () => {
     if (!window.electronAPI) {

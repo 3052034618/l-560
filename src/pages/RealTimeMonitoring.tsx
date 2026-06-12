@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Card, Table, Tag, Button, Modal, Form, Input, Select, Space, message, Row, Col, Statistic, Progress, Alert, Badge, Tooltip, Divider, Empty, Descriptions } from 'antd';
 import {
   WarningOutlined, BellOutlined, SafetyOutlined, ThunderboltOutlined,
@@ -7,31 +7,24 @@ import {
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import dayjs from 'dayjs';
-import { useAppStore, Alarm } from '@/store/appStore';
+import { useAppStore, Alarm, MonitoringDataPoint } from '@/store/appStore';
 import { DEVICE_TYPES, ALARM_LEVEL, HEALTH_STATUS } from '@/utils/constants';
 
 const { Option } = Select;
 
-interface MonitorDataPoint {
-  time: string;
-  value: number;
-}
-
 const RealTimeMonitoring: React.FC = () => {
-  const { devices, deviceStatuses, alarms, loadAll, saveAlarm } = useAppStore();
+  const { devices, deviceStatuses, alarms, loadAll, saveAlarm, historyData, historyDataInitialized, initHistoryData, updateHistoryData } = useAppStore();
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
-  const [historyData, setHistoryData] = useState<Record<string, MonitorDataPoint[]>>({});
   const [acknowledgeModal, setAcknowledgeModal] = useState<Alarm | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [form] = Form.useForm();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-
   const initializedRef = useRef(false);
 
   useEffect(() => {
     const init = async () => {
       await loadAll();
-      if (!initializedRef.current) {
+      if (!historyDataInitialized && !initializedRef.current) {
         initHistoryData();
         initializedRef.current = true;
       }
@@ -45,28 +38,11 @@ const RealTimeMonitoring: React.FC = () => {
     };
   }, []);
 
-  const initHistoryData = () => {
-    const initData: Record<string, MonitorDataPoint[]> = {};
-    const now = dayjs();
-    deviceStatuses.forEach(st => {
-      ['temperature', 'pressure', 'level'].forEach(param => {
-        const key = `${st.deviceCode}-${param}`;
-        initData[key] = Array.from({ length: 20 }, (_, i) => ({
-          time: now.subtract(19 - i, 'minute').format('HH:mm'),
-          value: param === 'temperature' ? st.temperature + (Math.random() - 0.5) * 10 :
-                 param === 'pressure' ? st.pressure + (Math.random() - 0.5) * 0.05 :
-                 st.level + (Math.random() - 0.5) * 5
-        }));
-      });
-    });
-    setHistoryData(initData);
-  };
-
   const simulateDataUpdate = async () => {
     const pendingAlarms: Alarm[] = [];
     const interlockRecords: string[] = [];
 
-    setHistoryData(prev => {
+    updateHistoryData(prev => {
       const newData = { ...prev };
       const now = dayjs().format('HH:mm');
       deviceStatuses.forEach(st => {

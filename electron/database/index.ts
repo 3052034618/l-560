@@ -59,8 +59,8 @@ export function getDatabase(): DataSource {
 
 async function seedInitialData() {
   const deviceRepo = dataSource.getRepository(Device);
-  const count = await deviceRepo.count();
-  if (count === 0) {
+  const deviceCount = await deviceRepo.count();
+  if (deviceCount === 0) {
     const devices = [
       { code: 'CDU-001', name: '常压蒸馏装置1号', type: 'atmospheric', status: 'running', designCapacity: 500, temperatureMin: 300, temperatureMax: 380, pressureMin: 0.1, pressureMax: 0.3, description: '年处理能力500万吨的常压蒸馏装置' },
       { code: 'CDU-002', name: '常压蒸馏装置2号', type: 'atmospheric', status: 'maintenance', designCapacity: 300, temperatureMin: 300, temperatureMax: 380, pressureMin: 0.1, pressureMax: 0.3, description: '年处理能力300万吨的常压蒸馏装置' },
@@ -72,8 +72,12 @@ async function seedInitialData() {
       { code: 'DEL-001', name: '延迟焦化装置1号', type: 'delayed_coking', status: 'idle', designCapacity: 100, temperatureMin: 480, temperatureMax: 510, pressureMin: 0.1, pressureMax: 0.3, description: '年处理能力100万吨的延迟焦化装置' }
     ];
     await deviceRepo.save(devices);
+    console.log('已初始化装置数据');
+  }
 
-    const transitionRepo = dataSource.getRepository(ProcessTransition);
+  const transitionRepo = dataSource.getRepository(ProcessTransition);
+  const transitionCount = await transitionRepo.count();
+  if (transitionCount === 0) {
     const transitions = [
       { fromType: 'atmospheric', toType: 'catalytic_cracking', transitionHours: 4, description: '常压切换催化需清塔4小时' },
       { fromType: 'atmospheric', toType: 'hydrocracking', transitionHours: 6, description: '常压切换加氢需清洗6小时' },
@@ -84,8 +88,12 @@ async function seedInitialData() {
       { fromType: 'hydrotreating', toType: 'hydrocracking', transitionHours: 4, description: '精制切换裂化需4小时' }
     ];
     await transitionRepo.save(transitions);
+    console.log('已初始化工艺切换数据');
+  }
 
-    const materialRepo = dataSource.getRepository(RawMaterial);
+  const materialRepo = dataSource.getRepository(RawMaterial);
+  const materialCount = await materialRepo.count();
+  if (materialCount === 0) {
     const materials = [
       { code: 'CRUDE-001', name: '沙特轻质原油', type: 'crude_oil', stock: 85000, unit: '吨', safetyStock: 30000, supplier: '沙特阿美' },
       { code: 'CRUDE-002', name: '俄罗斯乌拉尔原油', type: 'crude_oil', stock: 62000, unit: '吨', safetyStock: 25000, supplier: '俄罗斯石油' },
@@ -94,23 +102,31 @@ async function seedInitialData() {
       { code: 'H2-001', name: '氢气', type: 'utility', stock: 500000, unit: 'Nm³', safetyStock: 200000, supplier: '制氢装置' }
     ];
     await materialRepo.save(materials);
+    console.log('已初始化原料数据');
+  }
 
-    const employeeRepo = dataSource.getRepository(Employee);
+  const employeeRepo = dataSource.getRepository(Employee);
+  const employeeCount = await employeeRepo.count();
+  if (employeeCount === 0) {
     const employees = [
-      { code: 'EMP001', name: '张建国', position: '生产主管', department: '生产部', skills: ['atmospheric', 'catalytic_cracking', 'scheduling'], maxWorkHoursPerWeek: 48, status: 'active' },
-      { code: 'EMP002', name: '李志强', position: '中控操作员', department: '生产部', skills: ['atmospheric', 'control_room'], maxWorkHoursPerWeek: 44, status: 'active' },
-      { code: 'EMP003', name: '王海峰', position: '中控操作员', department: '生产部', skills: ['catalytic_cracking', 'control_room'], maxWorkHoursPerWeek: 44, status: 'active' },
-      { code: 'EMP004', name: '赵明辉', position: '设备工程师', department: '设备部', skills: ['maintenance', 'mechanical'], maxWorkHoursPerWeek: 48, status: 'active' },
-      { code: 'EMP005', name: '孙伟', position: '维修班长', department: '设备部', skills: ['maintenance', 'piping', 'valves'], maxWorkHoursPerWeek: 50, status: 'active' },
-      { code: 'EMP006', name: '周涛', position: '维修技工', department: '设备部', skills: ['maintenance', 'pumps'], maxWorkHoursPerWeek: 44, status: 'active' },
-      { code: 'EMP007', name: '吴斌', position: '维修技工', department: '设备部', skills: ['maintenance', 'instrument'], maxWorkHoursPerWeek: 44, status: 'active' },
-      { code: 'EMP008', name: '郑雷', position: '安全工程师', department: '安全部', skills: ['safety', 'monitoring'], maxWorkHoursPerWeek: 48, status: 'active' },
-      { code: 'EMP009', name: '陈刚', position: '中控操作员', department: '生产部', skills: ['hydrocracking', 'control_room'], maxWorkHoursPerWeek: 44, status: 'active' },
-      { code: 'EMP010', name: '刘华', position: '化验分析师', department: '质量部', skills: ['laboratory', 'analysis'], maxWorkHoursPerWeek: 40, status: 'active' }
+      { code: 'EMP001', name: '张建国', position: '生产主管', department: '生产部', skills: JSON.stringify(['atmospheric', 'catalytic_cracking', 'scheduling']), maxWorkHoursPerWeek: 48, status: 'active' },
+      { code: 'EMP002', name: '李志强', position: '中控操作员', department: '生产部', skills: JSON.stringify(['atmospheric', 'control_room']), maxWorkHoursPerWeek: 44, status: 'active' },
+      { code: 'EMP003', name: '王海峰', position: '中控操作员', department: '生产部', skills: JSON.stringify(['catalytic_cracking', 'control_room']), maxWorkHoursPerWeek: 44, status: 'active' },
+      { code: 'EMP004', name: '赵明辉', position: '设备工程师', department: '设备部', skills: JSON.stringify(['maintenance', 'mechanical']), maxWorkHoursPerWeek: 48, status: 'active' },
+      { code: 'EMP005', name: '孙伟', position: '维修班长', department: '设备部', skills: JSON.stringify(['maintenance', 'piping', 'valves']), maxWorkHoursPerWeek: 50, status: 'active' },
+      { code: 'EMP006', name: '周涛', position: '维修技工', department: '设备部', skills: JSON.stringify(['maintenance', 'pumps']), maxWorkHoursPerWeek: 44, status: 'active' },
+      { code: 'EMP007', name: '吴斌', position: '维修技工', department: '设备部', skills: JSON.stringify(['maintenance', 'instrument']), maxWorkHoursPerWeek: 44, status: 'active' },
+      { code: 'EMP008', name: '郑雷', position: '安全工程师', department: '安全部', skills: JSON.stringify(['safety', 'monitoring']), maxWorkHoursPerWeek: 48, status: 'active' },
+      { code: 'EMP009', name: '陈刚', position: '中控操作员', department: '生产部', skills: JSON.stringify(['hydrocracking', 'control_room']), maxWorkHoursPerWeek: 44, status: 'active' },
+      { code: 'EMP010', name: '刘华', position: '化验分析师', department: '质量部', skills: JSON.stringify(['laboratory', 'analysis']), maxWorkHoursPerWeek: 40, status: 'active' }
     ];
     await employeeRepo.save(employees);
+    console.log('已初始化员工数据');
+  }
 
-    const partRepo = dataSource.getRepository(SparePart);
+  const partRepo = dataSource.getRepository(SparePart);
+  const partCount = await partRepo.count();
+  if (partCount === 0) {
     const parts = [
       { code: 'SP-001', name: '高温油泵密封件', type: 'seal', stock: 25, unit: '套', safetyStock: 10, location: 'A-01-03', price: 2500 },
       { code: 'SP-002', name: '压力容器安全阀', type: 'valve', stock: 15, unit: '个', safetyStock: 5, location: 'B-02-01', price: 8500 },
@@ -122,8 +138,12 @@ async function seedInitialData() {
       { code: 'SP-008', name: '液压油46号', type: 'lubricant', stock: 200, unit: 'L', safetyStock: 80, location: 'G-02-01', price: 35 }
     ];
     await partRepo.save(parts);
+    console.log('已初始化备件数据');
+  }
 
-    const statusRepo = dataSource.getRepository(DeviceStatus);
+  const statusRepo = dataSource.getRepository(DeviceStatus);
+  const statusCount = await statusRepo.count();
+  if (statusCount === 0) {
     const deviceStatuses = [
       { deviceCode: 'CDU-001', temperature: 365, pressure: 0.25, level: 65, flowRate: 520, currentOutput: 480, runHours: 1850, healthStatus: 'normal' },
       { deviceCode: 'CDU-002', temperature: 0, pressure: 0, level: 0, flowRate: 0, currentOutput: 0, runHours: 3200, healthStatus: 'maintenance' },
@@ -135,8 +155,12 @@ async function seedInitialData() {
       { deviceCode: 'DEL-001', temperature: 0, pressure: 0, level: 0, flowRate: 0, currentOutput: 0, runHours: 2800, healthStatus: 'idle' }
     ];
     await statusRepo.save(deviceStatuses);
+    console.log('已初始化装置状态数据');
+  }
 
-    const orderRepo = dataSource.getRepository(MaintenanceWorkOrder);
+  const orderRepo = dataSource.getRepository(MaintenanceWorkOrder);
+  const orderCount = await orderRepo.count();
+  if (orderCount === 0) {
     const workOrders = [
       {
         orderNumber: 'WO-20240610-001',
@@ -203,8 +227,12 @@ async function seedInitialData() {
       }
     ];
     await orderRepo.save(workOrders);
+    console.log('已初始化维保工单数据');
+  }
 
-    const alarmRepo = dataSource.getRepository(Alarm);
+  const alarmRepo = dataSource.getRepository(Alarm);
+  const alarmCount = await alarmRepo.count();
+  if (alarmCount === 0) {
     const alarms = [
       {
         deviceCode: 'HDT-001',
@@ -244,7 +272,8 @@ async function seedInitialData() {
       }
     ];
     await alarmRepo.save(alarms);
-
-    console.log('初始化数据已加载');
+    console.log('已初始化报警数据');
   }
+
+  console.log('数据库初始化检查完成');
 }
