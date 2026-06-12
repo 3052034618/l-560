@@ -10,20 +10,33 @@ import {
   SaveOutlined, TeamOutlined, FileTextOutlined, HistoryOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useAppStore, MaintenanceWorkOrder, SparePart } from '@/store/appStore';
+import { useAppStore, MaintenanceWorkOrder, SparePart, Device, DeviceStatus } from '@/store/appStore';
 import { DEVICE_TYPES, WORK_ORDER_STATUS, WORK_ORDER_PRIORITY } from '@/utils/constants';
 
 const { TabPane } = Tabs;
 const { Option } = Select;
 const { TextArea } = Input;
 
+interface CycleWorkOrder {
+  deviceCode: string;
+  deviceName: string;
+  runHours: number;
+  threshold: number;
+  overdue: number;
+  workType: string;
+  priority: string;
+  description: string;
+}
+
 const MaintenanceManagement: React.FC = () => {
-  const { devices, workOrders, spareParts, employees, loadAll, saveWorkOrder, saveSparePart } = useAppStore();
+  const { devices, deviceStatuses, workOrders, spareParts, employees, loadAll, saveWorkOrder, saveSparePart } = useAppStore();
   const [orderModalVisible, setOrderModalVisible] = useState(false);
   const [partModalVisible, setPartModalVisible] = useState(false);
+  const [cycleModalVisible, setCycleModalVisible] = useState(false);
   const [detailDrawer, setDetailDrawer] = useState<MaintenanceWorkOrder | null>(null);
   const [editingOrder, setEditingOrder] = useState<MaintenanceWorkOrder | null>(null);
   const [editingPart, setEditingPart] = useState<SparePart | null>(null);
+  const [cycleWorkOrders, setCycleWorkOrders] = useState<CycleWorkOrder[]>([]);
   const [form] = Form.useForm();
   const [partForm] = Form.useForm();
 
@@ -52,6 +65,70 @@ const MaintenanceManagement: React.FC = () => {
     setEditingOrder(order);
     form.setFieldsValue(order);
     setOrderModalVisible(true);
+  };
+
+  const generateCycleWorkOrders = () => {
+    const thresholdMap: Record<string, number> = {
+      'atmospheric': 2000,
+      'catalytic': 3000,
+      'hydrocracking': 4000,
+      'coking': 2500,
+      'reforming': 3500
+    };
+    const existingDeviceCodes = workOrders
+      .filter(w => w.status !== 'completed' && w.workType === '周期维保')
+      .map(w => w.deviceCode);
+
+    const orders: CycleWorkOrder[] = [];
+    for (const device of devices) {
+      if (existingDeviceCodes.includes(device.code)) continue;
+      const status = deviceStatuses.find(s => s.deviceCode === device.code);
+      if (!status) continue;
+      const threshold = thresholdMap[device.type] || 3000;
+      if (status.runHours >= threshold * 0.9) {
+        const overdue = Math.max(0, status.runHours - threshold);
+        orders.push({
+          deviceCode: device.code,
+          deviceName: device.name,
+          runHours: status.runHours,
+          threshold,
+          overdue,
+          workType: '周期维保',
+          priority: overdue > 500 ? 'high' : overdue > 0 ? 'medium' : 'low',
+          description: `${device.name}已运行${status.runHours.toFixed(0)}小时，达到维保阈值${threshold}小时，需进行周期维保${overdue > 0 ? `（已超期${overdue.toFixed(0)}小时）` : '（即将到期）'}`
+        });
+      }
+    }
+    setCycleWorkOrders(orders.sort((a, b) => b.overdue - a.overdue));
+    setCycleModalVisible(true);
+  };
+
+  const confirmGenerateCycleWorkOrders = async () => {
+    try {
+      const savedOrders: MaintenanceWorkOrder[] = [];
+      for (const cwo of cycleWorkOrders) {
+        const orderNum = `WO-CY-${dayjs().format('YYYYMMDD')}-${String(workOrders.length + savedOrders.length + 1).padStart(3, '0')}`;
+        const order: MaintenanceWorkOrder = {
+          orderNumber: orderNum,
+          deviceCode: cwo.deviceCode,
+          workType: cwo.workType,
+          description: cwo.description,
+          priority: cwo.priority,
+          status: 'pending',
+          plannedDate: dayjs().format('YYYY-MM-DD'),
+          laborHours: 8
+        };
+        const saved = await saveWorkOrder(order);
+        if (saved) savedOrders.push(saved);
+      }
+      message.success(`成功生成 ${savedOrders.length} 条周期维保工单`);
+      setCycleModalVisible(false);
+      setCycleWorkOrders([]);
+      await loadAll();
+    } catch (e) {
+      console.error(e);
+      message.error('生成周期维保工单失败');
+    }
   };
 
   const handleAddPart = () => {
@@ -96,20 +173,84 @@ const MaintenanceManagement: React.FC = () => {
     }
   };
 
+  const parseSpareParts = (sparePartsStr: string | null | undefined): Array<{code: string, quantity: number, original: string}> => {
+    if (!sparePartsStr) return [];
+    const result: Array<{code: string, quantity: number, original: string}> = [];
+    try {
+      const parsed = JSON.parse(sparePartsStr);
+      if (Array.isArray(parsed)) {
+        for (const p of parsed) {
+          if (p.code && typeof p.quantity === 'number') {
+            result.push({ code: p.code, quantity: p.quantity, original: `${p.code} x${p.quantity}` });
+          }
+        }
+      }
+    } catch {
+      try {
+        const parts = sparePartsStr.split(/[,，]/);
+        for (const part of parts) {
+          const match = part.trim().match(/(SP-\d+)[\s:：]+(\d+)/);
+          if (match) {
+            result.push({ code: match[1], quantity: parseInt(match[2]), original: part.trim() });
+          }
+        }
+      } catch (e) {
+        console.error('解析备件清单失败', e);
+      }
+    }
+    return result;
+  };
+
   const completeOrder = async (order: MaintenanceWorkOrder) => {
     try {
-      const parts = order.spareParts ? JSON.parse(order.spareParts) : [];
+      const parts = parseSpareParts(order.spareParts);
+      const failedParts: string[] = [];
+      const successParts: string[] = [];
+      const lowStockWarnings: string[] = [];
+
       for (const part of parts) {
         const sp = spareParts.find(p => p.code === part.code);
         if (sp) {
-          await saveSparePart({ ...sp, stock: Math.max(0, sp.stock - part.quantity) });
+          const newStock = Math.max(0, sp.stock - part.quantity);
+          await saveSparePart({ ...sp, stock: newStock });
+          successParts.push(part.original);
+          if (newStock < sp.safetyStock) {
+            lowStockWarnings.push(`${sp.name} (${sp.code}): 库存 ${newStock} < 安全库存 ${sp.safetyStock}`);
+          }
+        } else {
+          failedParts.push(part.original);
         }
       }
-      await saveWorkOrder({ ...order, status: 'completed', completedDate: dayjs().format('YYYY-MM-DD') });
-      message.success('工单已完成，备件已扣减');
-      loadAll();
+
+      await saveWorkOrder({
+        ...order,
+        status: 'completed',
+        completedDate: dayjs().format('YYYY-MM-DD')
+      });
+
+      let msg = '工单已完成';
+      if (successParts.length > 0) msg += `，已扣减备件: ${successParts.join(', ')}`;
+      if (failedParts.length > 0) msg += `（未找到备件: ${failedParts.join(', ')}）`;
+      message.success(msg);
+
+      if (lowStockWarnings.length > 0) {
+        message.warning(`低库存预警: ${lowStockWarnings.join('; ')}`);
+      }
+
+      await loadAll();
     } catch (e) {
-      message.error('操作失败');
+      console.error(e);
+      try {
+        await saveWorkOrder({
+          ...order,
+          status: 'completed',
+          completedDate: dayjs().format('YYYY-MM-DD')
+        });
+        message.success('工单已完成（备件扣减异常，请手动核对库存）');
+        await loadAll();
+      } catch (e2) {
+        message.error('操作失败');
+      }
     }
   };
 
@@ -226,7 +367,7 @@ const MaintenanceManagement: React.FC = () => {
           <TabPane tab="维保工单管理" key="orders">
             <div style={{ marginBottom: 16, display: 'flex', gap: 12 }}>
               <Button type="primary" icon={<PlusOutlined />} onClick={handleAddOrder}>创建工单</Button>
-              <Button icon={<HistoryOutlined />}>生成周期维保工单</Button>
+              <Button icon={<HistoryOutlined />} onClick={generateCycleWorkOrders}>生成周期维保工单</Button>
             </div>
             <Table
               rowKey="id"
@@ -413,6 +554,44 @@ const MaintenanceManagement: React.FC = () => {
             </Col>
           </Row>
         </Form>
+      </Modal>
+
+      <Modal
+        title="生成周期维保工单"
+        open={cycleModalVisible}
+        onOk={confirmGenerateCycleWorkOrders}
+        onCancel={() => { setCycleModalVisible(false); setCycleWorkOrders([]); }}
+        width={900}
+        okText="确认生成"
+        cancelText="取消"
+        okButtonProps={{ disabled: cycleWorkOrders.length === 0 }}
+      >
+        <Alert
+          style={{ marginBottom: 16 }}
+          type="info"
+          showIcon
+          message={`共检测到 ${cycleWorkOrders.length} 台装置需要周期维保`}
+          description="根据装置运行时长自动计算，达到维保阈值90%的装置将列出"
+        />
+        <Table
+          rowKey="deviceCode"
+          size="small"
+          columns={[
+            { title: '装置', dataIndex: 'deviceName', key: 'deviceName', width: 160 },
+            { title: '运行时长', dataIndex: 'runHours', key: 'runHours', width: 110, render: (h: number) => `${h.toFixed(0)}h` },
+            { title: '维保阈值', dataIndex: 'threshold', key: 'threshold', width: 100, render: (h: number) => `${h}h` },
+            { title: '超期时长', dataIndex: 'overdue', key: 'overdue', width: 100, render: (h: number) => h > 0 ? <Tag color="red">{h.toFixed(0)}h</Tag> : <Tag color="orange">即将到期</Tag> },
+            { title: '优先级', dataIndex: 'priority', key: 'priority', width: 80, render: (p: string) => {
+              const pr = WORK_ORDER_PRIORITY[p];
+              return <Tag color={pr?.color}>{pr?.label}</Tag>;
+            }},
+            { title: '维保内容', dataIndex: 'description', key: 'description', ellipsis: true }
+          ]}
+          dataSource={cycleWorkOrders}
+          pagination={false}
+          scroll={{ y: 320 }}
+          locale={{ emptyText: '暂无需要维保的装置' }}
+        />
       </Modal>
 
       <Drawer

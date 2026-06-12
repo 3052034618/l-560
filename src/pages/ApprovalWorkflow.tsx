@@ -230,13 +230,13 @@ const ApprovalWorkflow: React.FC = () => {
             <Divider orientation="left">审批轨迹</Divider>
             <Timeline
               items={[
-                { color: 'blue', children: <div><b>方案创建</b><div style={{ color: '#8c8c8c', fontSize: 12 }}>{dayjs(selectedSchedule.createdAt).format('YYYY-MM-DD HH:mm')}</div></div> },
+                { color: 'blue', children: <div><b>方案创建</b><div style={{ color: '#8c8c8c', fontSize: 12 }}>{selectedSchedule.createdAt ? dayjs(selectedSchedule.createdAt).format('YYYY-MM-DD HH:mm') : '-'}</div></div> },
                 selectedSchedule.status !== 'pending_approval' && {
                   color: selectedSchedule.status === 'approved' || selectedSchedule.status === 'completed' ? 'green' : 'red',
                   children: (
                     <div>
                       <b>{selectedSchedule.status === 'approved' || selectedSchedule.status === 'completed' ? '生产主管审批通过' : '审批驳回'}</b>
-                      <div style={{ color: '#8c8c8c', fontSize: 12 }}>张建国 · {dayjs(selectedSchedule.updatedAt).format('YYYY-MM-DD HH:mm')}</div>
+                      <div style={{ color: '#8c8c8c', fontSize: 12 }}>张建国 · {selectedSchedule.updatedAt ? dayjs(selectedSchedule.updatedAt).format('YYYY-MM-DD HH:mm') : '-'}</div>
                     </div>
                   )
                 },

@@ -51,20 +51,26 @@ export interface ProductionScheduleItem {
   rawMaterials?: string;
   status: string;
   notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Alarm {
   id?: number;
   deviceCode: string;
+  alarmCode?: string;
   parameter: string;
+  parameterKey?: string;
   alarmLevel: string;
-  thresholdValue: number;
-  actualValue: string;
+  thresholdValue: number | string;
+  actualValue: number;
   status: string;
   message: string;
   acknowledgedBy?: string;
   acknowledgedAt?: string;
   actionTaken?: string;
+  actionType?: string;
+  actionDetail?: string;
   createdAt?: string;
 }
 
@@ -117,6 +123,22 @@ export interface ShiftItem {
   startTime: string;
   endTime: string;
   tasks?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ShiftChangeItem {
+  id?: number;
+  shiftId: number;
+  requester: string;
+  requestedSwapWith: string;
+  reason: string;
+  status: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  comments?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ProcessTransition {
@@ -137,6 +159,7 @@ interface AppState {
   spareParts: SparePart[];
   employees: Employee[];
   shifts: ShiftItem[];
+  shiftChanges: ShiftChangeItem[];
   transitions: ProcessTransition[];
   loading: boolean;
 
@@ -150,6 +173,7 @@ interface AppState {
   loadSpareParts: () => Promise<void>;
   loadEmployees: () => Promise<void>;
   loadShifts: () => Promise<void>;
+  loadShiftChanges: () => Promise<void>;
   loadTransitions: () => Promise<void>;
   loadAll: () => Promise<void>;
 
@@ -161,6 +185,8 @@ interface AppState {
   saveSparePart: (part: SparePart) => Promise<any>;
   saveEmployee: (emp: Employee) => Promise<any>;
   saveShift: (shift: ShiftItem) => Promise<any>;
+  saveShiftChange: (change: ShiftChangeItem) => Promise<any>;
+  removeShiftChange: (id: number) => Promise<any>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -173,6 +199,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   spareParts: [],
   employees: [],
   shifts: [],
+  shiftChanges: [],
   transitions: [],
   loading: false,
 
@@ -297,10 +324,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     try {
       const data = await window.electronAPI.db.find('Shift');
-      set({ schedules: data.length ? data : getMockShifts() });
+      set({ shifts: data.length ? data : getMockShifts() });
     } catch (e) {
       console.error('加载排班失败', e);
       set({ shifts: getMockShifts() });
+    }
+  },
+
+  loadShiftChanges: async () => {
+    if (!window.electronAPI) {
+      set({ shiftChanges: getMockShiftChanges() });
+      return;
+    }
+    try {
+      const data = await window.electronAPI.db.find('ShiftChange');
+      set({ shiftChanges: data.length ? data : getMockShiftChanges() });
+    } catch (e) {
+      console.error('加载调班申请失败', e);
+      set({ shiftChanges: getMockShiftChanges() });
     }
   },
 
@@ -330,6 +371,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().loadSpareParts(),
       get().loadEmployees(),
       get().loadShifts(),
+      get().loadShiftChanges(),
       get().loadTransitions()
     ]);
     set({ loading: false });
@@ -373,6 +415,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveShift: async (shift) => {
     if (!window.electronAPI) return shift;
     return window.electronAPI.db.save('Shift', shift);
+  },
+
+  saveShiftChange: async (change) => {
+    if (!window.electronAPI) return change;
+    return window.electronAPI.db.save('ShiftChange', change);
+  },
+
+  removeShiftChange: async (id) => {
+    if (!window.electronAPI) return null;
+    return window.electronAPI.db.remove('ShiftChange', id);
   }
 }));
 
@@ -426,10 +478,10 @@ function getMockSchedules(): ProductionScheduleItem[] {
 
 function getMockAlarms(): Alarm[] {
   return [
-    { id: 1, deviceCode: 'HDT-001', parameter: '反应温度', alarmLevel: 'warning', thresholdValue: 420, actualValue: '423.5', status: 'active', message: '加氢裂化1号反应温度偏高，请检查加热炉燃料流量', createdAt: new Date(Date.now() - 300000).toISOString() },
-    { id: 2, deviceCode: 'CDU-001', parameter: '塔顶压力', alarmLevel: 'info', thresholdValue: 0.3, actualValue: '0.25', status: 'acknowledged', message: '常压1号塔顶压力略低于正常值', acknowledgedBy: '李志强', acknowledgedAt: new Date(Date.now() - 600000).toISOString(), actionTaken: '已调整回流比', createdAt: new Date(Date.now() - 900000).toISOString() },
-    { id: 3, deviceCode: 'FCC-001', parameter: '再生器料位', alarmLevel: 'warning', thresholdValue: 80, actualValue: '82.3', status: 'active', message: '催化裂化1号再生器料位偏高', createdAt: new Date(Date.now() - 120000).toISOString() },
-    { id: 4, deviceCode: 'VR-001', parameter: '炉出口温度', alarmLevel: 'critical', thresholdValue: 420, actualValue: '425.8', status: 'active', message: '减压蒸馏1号炉出口温度超临界阈值！立即检查！', createdAt: new Date(Date.now() - 60000).toISOString() }
+    { id: 1, deviceCode: 'HDT-001', parameter: '反应温度', alarmLevel: 'warning', thresholdValue: 420, actualValue: 423.5, status: 'active', message: '加氢裂化1号反应温度偏高，请检查加热炉燃料流量', createdAt: new Date(Date.now() - 300000).toISOString() },
+    { id: 2, deviceCode: 'CDU-001', parameter: '塔顶压力', alarmLevel: 'info', thresholdValue: 0.3, actualValue: 0.25, status: 'acknowledged', message: '常压1号塔顶压力略低于正常值', acknowledgedBy: '李志强', acknowledgedAt: new Date(Date.now() - 600000).toISOString(), actionTaken: '已调整回流比', createdAt: new Date(Date.now() - 900000).toISOString() },
+    { id: 3, deviceCode: 'FCC-001', parameter: '再生器料位', alarmLevel: 'warning', thresholdValue: 80, actualValue: 82.3, status: 'active', message: '催化裂化1号再生器料位偏高', createdAt: new Date(Date.now() - 120000).toISOString() },
+    { id: 4, deviceCode: 'VR-001', parameter: '炉出口温度', alarmLevel: 'critical', thresholdValue: 420, actualValue: 425.8, status: 'active', message: '减压蒸馏1号炉出口温度超临界阈值！立即检查！', createdAt: new Date(Date.now() - 60000).toISOString() }
   ];
 }
 
@@ -482,6 +534,13 @@ function getMockShifts(): ShiftItem[] {
     );
   }
   return shifts;
+}
+
+function getMockShiftChanges(): ShiftChangeItem[] {
+  const today = new Date().toISOString().split('T')[0];
+  return [
+    { id: 1, shiftId: 2, requester: 'EMP003', requestedSwapWith: 'EMP002', reason: '家中有事，需要调班', status: 'pending', createdAt: new Date().toISOString() }
+  ];
 }
 
 function getMockTransitions(): ProcessTransition[] {

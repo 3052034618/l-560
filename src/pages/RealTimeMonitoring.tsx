@@ -54,7 +54,10 @@ const RealTimeMonitoring: React.FC = () => {
     setHistoryData(initData);
   };
 
-  const simulateDataUpdate = () => {
+  const simulateDataUpdate = async () => {
+    const pendingAlarms: Alarm[] = [];
+    const interlockRecords: string[] = [];
+
     setHistoryData(prev => {
       const newData = { ...prev };
       const now = dayjs().format('HH:mm');
@@ -69,16 +72,130 @@ const RealTimeMonitoring: React.FC = () => {
             let newVal = lastVal + delta;
             const device = devices.find(d => d.code === st.deviceCode);
             if (device) {
-              if (param === 'temperature') newVal = Math.max(device.temperatureMin * 0.8, Math.min(device.temperatureMax * 1.1, newVal));
-              if (param === 'pressure') newVal = Math.max(0, Math.min(device.pressureMax * 1.1, newVal));
-              if (param === 'level') newVal = Math.max(0, Math.min(100, newVal));
+              if (param === 'temperature') {
+                if (Math.random() < 0.1) newVal = device.temperatureMax * 1.08;
+                newVal = Math.max(device.temperatureMin * 0.8, Math.min(device.temperatureMax * 1.15, newVal));
+              }
+              if (param === 'pressure') {
+                if (Math.random() < 0.08) newVal = device.pressureMax * 1.08;
+                newVal = Math.max(0, Math.min(device.pressureMax * 1.15, newVal));
+              }
+              if (param === 'level') {
+                newVal = Math.max(0, Math.min(100, newVal));
+              }
             }
             newData[key] = [...newData[key].slice(1), { time: now, value: newVal }];
+
+            if (device) {
+              let threshold: number | null = null;
+              let isOverLimit = false;
+              let direction: 'high' | 'low' | null = null;
+
+              if (param === 'temperature') {
+                if (newVal > device.temperatureMax) {
+                  threshold = device.temperatureMax;
+                  isOverLimit = true;
+                  direction = 'high';
+                } else if (newVal < device.temperatureMin) {
+                  threshold = device.temperatureMin;
+                  isOverLimit = true;
+                  direction = 'low';
+                }
+              } else if (param === 'pressure') {
+                if (newVal > device.pressureMax) {
+                  threshold = device.pressureMax;
+                  isOverLimit = true;
+                  direction = 'high';
+                } else if (newVal < device.pressureMin) {
+                  threshold = device.pressureMin;
+                  isOverLimit = true;
+                  direction = 'low';
+                }
+              } else if (param === 'level') {
+                if (newVal > 90) {
+                  threshold = 90;
+                  isOverLimit = true;
+                  direction = 'high';
+                } else if (newVal < 20) {
+                  threshold = 20;
+                  isOverLimit = true;
+                  direction = 'low';
+                }
+              }
+
+              if (isOverLimit && threshold !== null) {
+                const paramLabels: Record<string, string> = {
+                  temperature: '温度',
+                  pressure: '压力',
+                  level: '液位'
+                };
+                const existingActiveAlarm = alarms.find(a =>
+                  a.deviceCode === st.deviceCode &&
+                  (a.parameterKey === param || a.parameter === paramLabels[param]) &&
+                  a.status === 'active'
+                );
+                if (!existingActiveAlarm) {
+                  const paramUnits: Record<string, string> = {
+                    temperature: '°C',
+                    pressure: 'MPa',
+                    level: '%'
+                  };
+                  const exceedRatio = Math.abs((newVal - threshold) / threshold);
+                  const alarmLevel = exceedRatio > 0.08 ? 'critical' : 'warning';
+                  const directionStr = direction === 'high' ? '超高' : '超低';
+                  const message = `${device.name}${paramLabels[param]}${directionStr}报警: 当前${newVal.toFixed(1)}${paramUnits[param]}, 阈值${threshold}${paramUnits[param]}`;
+
+                  const newAlarm: Alarm = {
+                    deviceCode: st.deviceCode,
+                    alarmCode: `ALM-${dayjs().format('YYYYMMDDHHmmss')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+                    alarmLevel,
+                    parameter: paramLabels[param],
+                    parameterKey: param,
+                    thresholdValue: `${threshold}${paramUnits[param]}`,
+                    actualValue: newVal,
+                    message,
+                    status: 'active',
+                    createdAt: new Date().toISOString()
+                  };
+
+                  if (alarmLevel === 'critical') {
+                    if (param === 'temperature' && direction === 'high') {
+                      interlockRecords.push(`【联锁动作】${device.name}温度严重超高(${newVal.toFixed(1)}°C)，已触发联锁停车保护`);
+                    } else if (param === 'pressure' && direction === 'high') {
+                      interlockRecords.push(`【联锁动作】${device.name}压力严重超高(${newVal.toFixed(2)}MPa)，已自动打开泄压阀`);
+                    } else if (param === 'level' && direction === 'high') {
+                      interlockRecords.push(`【联锁动作】${device.name}液位严重超高(${newVal.toFixed(1)}%)，已自动调节进料阀开度`);
+                    }
+                  }
+
+                  pendingAlarms.push(newAlarm);
+                }
+              }
+            }
           }
         });
       });
       return newData;
     });
+
+    if (pendingAlarms.length > 0) {
+      try {
+        for (const alarm of pendingAlarms) {
+          await saveAlarm(alarm);
+        }
+        if (soundEnabled) {
+          const criticalCount = pendingAlarms.filter(a => a.alarmLevel === 'critical').length;
+          if (criticalCount > 0) {
+            message.error(`检测到 ${criticalCount} 条严重报警！${interlockRecords.join('; ')}`);
+          } else {
+            message.warning(`检测到 ${pendingAlarms.length} 条新报警`);
+          }
+        }
+        await loadAll();
+      } catch (e) {
+        console.error('保存报警失败', e);
+      }
+    }
   };
 
   const activeAlarms = alarms.filter(a => a.status === 'active');
@@ -149,7 +266,7 @@ const RealTimeMonitoring: React.FC = () => {
     }},
     { title: '参数', dataIndex: 'parameter', key: 'parameter', width: 100 },
     { title: '阈值', dataIndex: 'thresholdValue', key: 'thresholdValue', width: 80 },
-    { title: '实际值', dataIndex: 'actualValue', key: 'actualValue', width: 80, render: (v: string, r: any) => <span style={{ color: r.alarmLevel === 'critical' ? '#ff4d4f' : '#faad14', fontWeight: 600 }}>{v}</span> },
+    { title: '实际值', dataIndex: 'actualValue', key: 'actualValue', width: 80, render: (v: number, r: any) => <span style={{ color: r.alarmLevel === 'critical' ? '#ff4d4f' : '#faad14', fontWeight: 600 }}>{typeof v === 'number' ? v.toFixed(1) : v}</span> },
     { title: '报警信息', dataIndex: 'message', key: 'message', ellipsis: true },
     { title: '时间', dataIndex: 'createdAt', key: 'createdAt', width: 120, render: (t: string) => dayjs(t).format('HH:mm:ss') },
     { title: '状态', dataIndex: 'status', key: 'status', width: 80, render: (s: string) => s === 'active' ? <Badge status="error" text={<span className="alarm-flash">活动</span>} /> : <Tag color="default">已确认</Tag> },
@@ -380,7 +497,7 @@ const RealTimeMonitoring: React.FC = () => {
               <Descriptions.Item label="装置">{acknowledgeModal.deviceCode}</Descriptions.Item>
               <Descriptions.Item label="参数">{acknowledgeModal.parameter}</Descriptions.Item>
               <Descriptions.Item label="阈值">{acknowledgeModal.thresholdValue}</Descriptions.Item>
-              <Descriptions.Item label="实际值">{acknowledgeModal.actualValue}</Descriptions.Item>
+              <Descriptions.Item label="实际值">{typeof acknowledgeModal.actualValue === 'number' ? acknowledgeModal.actualValue.toFixed(1) : acknowledgeModal.actualValue}</Descriptions.Item>
             </Descriptions>
             <Form form={form} layout="vertical">
               <Form.Item name="action" label="处理措施" rules={[{ required: true, message: '请填写处理措施' }]}>

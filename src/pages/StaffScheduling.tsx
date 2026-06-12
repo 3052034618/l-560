@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
-import { useAppStore, ShiftItem } from '@/store/appStore';
+import { useAppStore, ShiftItem, ShiftChangeItem } from '@/store/appStore';
 import { DEVICE_TYPES, SHIFT_TYPES } from '@/utils/constants';
 
 const { TabPane } = Tabs;
@@ -40,7 +40,7 @@ const SKILL_LABELS: Record<string, string> = {
 };
 
 const StaffScheduling: React.FC = () => {
-  const { devices, employees, shifts, loadAll, saveShift, saveEmployee } = useAppStore();
+  const { devices, employees, shifts, shiftChanges, loadAll, loadShiftChanges, saveShift, saveEmployee, saveShiftChange } = useAppStore();
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
   const [shiftModalVisible, setShiftModalVisible] = useState(false);
   const [employeeModalVisible, setEmployeeModalVisible] = useState(false);
@@ -82,16 +82,18 @@ const StaffScheduling: React.FC = () => {
       });
 
       const deviceCodes = devices.filter(d => d.status === 'running').map(d => d.code);
+      const savePromises: Promise<any>[] = [];
 
       for (let day = 0; day < 7; day++) {
         const shiftDate = weekStart.add(day, 'day').format('YYYY-MM-DD');
-        SHIFT_TYPES.forEach((shiftType, idx) => {
+        for (let idx = 0; idx < SHIFT_TYPES.length; idx++) {
+          const shiftType = SHIFT_TYPES[idx];
           const operatorIndex = (day * 3 + idx) % operators.length;
           const deviceIndex = (day * 3 + idx) % deviceCodes.length;
           if (operators[operatorIndex]) {
             const weeklyHours = weeklyHoursMap[operators[operatorIndex].code] || 0;
             if (weeklyHours + 8 <= operators[operatorIndex].maxWorkHoursPerWeek) {
-              saveShift({
+              savePromises.push(saveShift({
                 shiftDate,
                 shiftType: shiftType.value,
                 employeeCode: operators[operatorIndex].code,
@@ -99,14 +101,16 @@ const StaffScheduling: React.FC = () => {
                 startTime: shiftType.start,
                 endTime: shiftType.end,
                 tasks: `${DEVICE_TYPES[devices.find(d => d.code === deviceCodes[deviceIndex])?.type || '']}装置操作`
-              });
+              }));
             }
           }
-        });
+        }
       }
-      message.success('智能排班完成，已根据技能标签和工时上限生成排班表');
-      loadAll();
+      await Promise.all(savePromises);
+      message.success(`智能排班完成，已生成 ${savePromises.length} 条排班记录`);
+      await loadAll();
     } catch (e) {
+      console.error(e);
       message.error('排班失败');
     }
   };
@@ -179,15 +183,60 @@ const StaffScheduling: React.FC = () => {
   const submitSwap = async () => {
     try {
       const values = await swapForm.validateFields();
-      if (!selectedShift) return;
-      await saveShift({
-        ...selectedShift,
-        employeeCode: values.swapWith
+      if (!selectedShift || !selectedShift.id) return;
+      await saveShiftChange({
+        shiftId: selectedShift.id,
+        requester: selectedShift.employeeCode,
+        requestedSwapWith: values.swapWith,
+        reason: values.reason,
+        status: 'pending'
       });
       message.success('调班申请已提交，待主管审批');
       setSwapModalVisible(false);
-      loadAll();
+      await loadAll();
     } catch (e) {
+      console.error(e);
+      message.error('操作失败');
+    }
+  };
+
+  const approveSwap = async (item: ShiftChangeItem) => {
+    try {
+      const shift = shifts.find(s => s.id === item.shiftId);
+      if (!shift) {
+        message.error('找不到对应排班');
+        return;
+      }
+      await saveShift({
+        ...shift,
+        employeeCode: item.requestedSwapWith
+      });
+      await saveShiftChange({
+        ...item,
+        status: 'approved',
+        approvedBy: '张建国',
+        approvedAt: new Date().toISOString()
+      });
+      message.success('调班申请已批准，排班已更新');
+      await loadAll();
+    } catch (e) {
+      console.error(e);
+      message.error('操作失败');
+    }
+  };
+
+  const rejectSwap = async (item: ShiftChangeItem) => {
+    try {
+      await saveShiftChange({
+        ...item,
+        status: 'rejected',
+        approvedBy: '张建国',
+        approvedAt: new Date().toISOString()
+      });
+      message.success('调班申请已驳回');
+      await loadAll();
+    } catch (e) {
+      console.error(e);
       message.error('操作失败');
     }
   };
@@ -257,21 +306,35 @@ const StaffScheduling: React.FC = () => {
 
   const dateCellRender = (value: Dayjs) => {
     const dayShifts = shifts.filter(s => dayjs(s.shiftDate).isSame(value, 'day'));
-    if (dayShifts.length === 0) return null;
+    const daySwapRequests = shiftChanges.filter(sc => {
+      const shift = shifts.find(s => s.id === sc.shiftId);
+      return shift && dayjs(shift.shiftDate).isSame(value, 'day');
+    });
     return (
-      <List
-        size="small"
-        dataSource={dayShifts}
-        renderItem={(s) => {
-          const e = employees.find(x => x.code === s.employeeCode);
-          const color = s.shiftType === '早班' ? 'blue' : s.shiftType === '中班' ? 'orange' : 'purple';
-          return (
-            <List.Item style={{ padding: '2px 0' }}>
-              <Badge color={color} text={<span style={{ fontSize: 12 }}>{e?.name || s.employeeCode}</span>} />
-            </List.Item>
-          );
-        }}
-      />
+      <div>
+        {dayShifts.length > 0 && (
+          <List
+            size="small"
+            dataSource={dayShifts}
+            renderItem={(s) => {
+              const e = employees.find(x => x.code === s.employeeCode);
+              const color = s.shiftType === '早班' ? 'blue' : s.shiftType === '中班' ? 'orange' : 'purple';
+              const hasSwapRequest = daySwapRequests.some(sc => sc.shiftId === s.id && sc.status === 'pending');
+              return (
+                <List.Item style={{ padding: '2px 0' }}>
+                  <Tooltip title={hasSwapRequest ? '有调班申请待审批' : ''}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Badge color={color} />
+                      <span style={{ fontSize: 12 }}>{e?.name || s.employeeCode}</span>
+                      {hasSwapRequest && <Badge status="warning" offset={[-2, 0]} />}
+                    </div>
+                  </Tooltip>
+                </List.Item>
+              );
+            }}
+          />
+        )}
+      </div>
     );
   };
 
@@ -353,6 +416,46 @@ const StaffScheduling: React.FC = () => {
               dataSource={employees}
               pagination={{ pageSize: 10 }}
               scroll={{ x: 1100 }}
+            />
+          </TabPane>
+          <TabPane tab={`调班申请 (${shiftChanges.filter(s => s.status === 'pending').length})`} key="swap">
+            <Table
+              rowKey="id"
+              columns={[
+                { title: '申请时间', dataIndex: 'createdAt', key: 'createdAt', width: 160, render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-' },
+                { title: '申请人', dataIndex: 'requester', key: 'requester', width: 100, render: (c: string) => employees.find(e => e.code === c)?.name || c },
+                { title: '调班人员', dataIndex: 'requestedSwapWith', key: 'requestedSwapWith', width: 100, render: (c: string) => employees.find(e => e.code === c)?.name || c },
+                { title: '排班日期', key: 'shiftDate', width: 120, render: (_: any, r: any) => {
+                  const shift = shifts.find(s => s.id === r.shiftId);
+                  return shift ? dayjs(shift.shiftDate).format('YYYY-MM-DD') : '-';
+                }},
+                { title: '班次', key: 'shiftType', width: 80, render: (_: any, r: any) => {
+                  const shift = shifts.find(s => s.id === r.shiftId);
+                  return shift ? <Tag color={shift.shiftType === '早班' ? 'blue' : shift.shiftType === '中班' ? 'orange' : 'purple'}>{shift.shiftType}</Tag> : '-';
+                }},
+                { title: '调班原因', dataIndex: 'reason', key: 'reason', ellipsis: true },
+                { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: (s: string) => {
+                  if (s === 'pending') return <Tag color="orange">待审批</Tag>;
+                  if (s === 'approved') return <Tag color="green">已批准</Tag>;
+                  if (s === 'rejected') return <Tag color="red">已驳回</Tag>;
+                  return s;
+                }},
+                { title: '审批时间', dataIndex: 'approvedAt', key: 'approvedAt', width: 140, render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-' },
+                { title: '操作', key: 'action', width: 180, render: (_: any, r: ShiftChangeItem) => (
+                  r.status === 'pending' ? (
+                    <Space size="small">
+                      <Button size="small" type="primary" onClick={() => approveSwap(r)}>批准</Button>
+                      <Button size="small" danger onClick={() => rejectSwap(r)}>驳回</Button>
+                    </Space>
+                  ) : (
+                    <Tag color="default">{r.status === 'approved' ? '已处理' : '已处理'}</Tag>
+                  )
+                )}
+              ]}
+              dataSource={shiftChanges.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))}
+              pagination={{ pageSize: 10 }}
+              scroll={{ x: 1100 }}
+              locale={{ emptyText: '暂无调班申请' }}
             />
           </TabPane>
         </Tabs>

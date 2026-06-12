@@ -338,7 +338,7 @@ const ProcessFlow: React.FC = () => {
             </Col>
             <Col span={5}>
               <Card size="small">
-                <Statistic title="反应温度" value={selectedUnit.status?.temperature.toFixed(1)} suffix="℃" prefix={<FireOutlined style={{ color: '#ff4d4f' }} />} />
+                <Statistic title="反应温度" value={selectedUnit.status?.temperature ? selectedUnit.status.temperature.toFixed(1) : '-'} suffix="℃" prefix={<FireOutlined style={{ color: '#ff4d4f' }} />} />
                 <Progress
                   percent={Math.min(100, selectedUnit.status ? ((selectedUnit.status.temperature - selectedUnit.device.temperatureMin) / (selectedUnit.device.temperatureMax - selectedUnit.device.temperatureMin)) * 100 : 0)}
                   size="small"
@@ -350,7 +350,7 @@ const ProcessFlow: React.FC = () => {
             </Col>
             <Col span={5}>
               <Card size="small">
-                <Statistic title="系统压力" value={selectedUnit.status?.pressure.toFixed(2)} suffix="MPa" prefix={<DashboardOutlined style={{ color: '#1677ff' }} />} />
+                <Statistic title="系统压力" value={selectedUnit.status?.pressure ? selectedUnit.status.pressure.toFixed(2) : '-'} suffix="MPa" prefix={<DashboardOutlined style={{ color: '#1677ff' }} />} />
                 <Progress
                   percent={Math.min(100, selectedUnit.status ? ((selectedUnit.status.pressure - selectedUnit.device.pressureMin) / (selectedUnit.device.pressureMax - selectedUnit.device.pressureMin)) * 100 : 0)}
                   size="small"
@@ -362,7 +362,7 @@ const ProcessFlow: React.FC = () => {
             </Col>
             <Col span={5}>
               <Card size="small">
-                <Statistic title="液位" value={selectedUnit.status?.level.toFixed(1)} suffix="%" prefix={<ExperimentOutlined style={{ color: '#52c41a' }} />} />
+                <Statistic title="液位" value={selectedUnit.status?.level ? selectedUnit.status.level.toFixed(1) : '-'} suffix="%" prefix={<ExperimentOutlined style={{ color: '#52c41a' }} />} />
                 <Progress
                   percent={Math.round(selectedUnit.status?.level || 0)}
                   size="small"
@@ -374,7 +374,7 @@ const ProcessFlow: React.FC = () => {
             </Col>
             <Col span={5}>
               <Card size="small">
-                <Statistic title="运行时长" value={selectedUnit.status?.runHours || 0} suffix="小时" prefix={<ThunderboltOutlined style={{ color: '#722ed1' }} />} />
+                <Statistic title="运行时长" value={selectedUnit.status?.runHours !== undefined ? selectedUnit.status.runHours : '-'} suffix="小时" prefix={<ThunderboltOutlined style={{ color: '#722ed1' }} />} />
                 <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 12 }}>
                   设计产能: {selectedUnit.device.designCapacity} 万吨/年
                 </div>
