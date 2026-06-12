@@ -125,20 +125,26 @@ async function seedInitialData() {
   }
 
   const partRepo = dataSource.getRepository(SparePart);
-  const partCount = await partRepo.count();
-  if (partCount === 0) {
-    const parts = [
-      { code: 'SP-001', name: '高温油泵密封件', type: 'seal', stock: 25, unit: '套', safetyStock: 10, location: 'A-01-03', price: 2500 },
-      { code: 'SP-002', name: '压力容器安全阀', type: 'valve', stock: 15, unit: '个', safetyStock: 5, location: 'B-02-01', price: 8500 },
-      { code: 'SP-003', name: '温度变送器PT100', type: 'instrument', stock: 40, unit: '支', safetyStock: 20, location: 'C-01-05', price: 1200 },
-      { code: 'SP-004', name: '压力传感器', type: 'instrument', stock: 30, unit: '个', safetyStock: 15, location: 'C-02-02', price: 3200 },
-      { code: 'SP-005', name: '换热器管束', type: 'heat_exchanger', stock: 3, unit: '组', safetyStock: 2, location: 'D-01-01', price: 120000 },
-      { code: 'SP-006', name: '催化剂', type: 'catalyst', stock: 8000, unit: 'kg', safetyStock: 3000, location: 'E-01-01', price: 150 },
-      { code: 'SP-007', name: '防腐蚀涂料', type: 'coating', stock: 150, unit: '桶', safetyStock: 50, location: 'F-01-03', price: 800 },
-      { code: 'SP-008', name: '液压油46号', type: 'lubricant', stock: 200, unit: 'L', safetyStock: 80, location: 'G-02-01', price: 35 }
-    ];
-    await partRepo.save(parts);
-    console.log('已初始化备件数据');
+  const defaultParts = [
+    { code: 'SP-001', name: '高温油泵密封件', type: 'seal', stock: 25, unit: '套', safetyStock: 10, location: 'A-01-03', price: 2500 },
+    { code: 'SP-002', name: '压力容器安全阀', type: 'valve', stock: 15, unit: '个', safetyStock: 5, location: 'B-02-01', price: 8500 },
+    { code: 'SP-003', name: '温度变送器PT100', type: 'instrument', stock: 40, unit: '支', safetyStock: 20, location: 'C-01-05', price: 1200 },
+    { code: 'SP-004', name: '压力传感器', type: 'instrument', stock: 30, unit: '个', safetyStock: 15, location: 'C-02-02', price: 3200 },
+    { code: 'SP-005', name: '换热器管束', type: 'heat_exchanger', stock: 3, unit: '组', safetyStock: 2, location: 'D-01-01', price: 120000 },
+    { code: 'SP-006', name: '催化剂', type: 'catalyst', stock: 8000, unit: 'kg', safetyStock: 3000, location: 'E-01-01', price: 150 },
+    { code: 'SP-007', name: '防腐蚀涂料', type: 'coating', stock: 150, unit: '桶', safetyStock: 50, location: 'F-01-03', price: 800 },
+    { code: 'SP-008', name: '液压油46号', type: 'lubricant', stock: 200, unit: 'L', safetyStock: 80, location: 'G-02-01', price: 35 }
+  ];
+  let partAdded = 0;
+  for (const p of defaultParts) {
+    const existing = await partRepo.findOne({ where: { code: p.code } });
+    if (!existing) {
+      await partRepo.save(p);
+      partAdded++;
+    }
+  }
+  if (partAdded > 0) {
+    console.log(`已补齐 ${partAdded} 条备件数据`);
   }
 
   const statusRepo = dataSource.getRepository(DeviceStatus);
@@ -159,75 +165,81 @@ async function seedInitialData() {
   }
 
   const orderRepo = dataSource.getRepository(MaintenanceWorkOrder);
-  const orderCount = await orderRepo.count();
-  if (orderCount === 0) {
-    const workOrders = [
-      {
-        orderNumber: 'WO-20240610-001',
-        deviceCode: 'CDU-001',
-        workType: '预防性维护',
-        description: '常压蒸馏装置1号例行巡检及密封件检查更换',
-        spareParts: JSON.stringify([{ code: 'SP-001', quantity: 2, name: '高温油泵密封件' }]),
-        priority: 'medium',
-        status: 'completed',
-        assignedTeam: '维修一班',
-        assignee: '孙伟',
-        plannedDate: '2024-06-08',
-        completedDate: '2024-06-09',
-        laborHours: 6,
-        remarks: '常规预防性维护，已更换密封件2套'
-      },
-      {
-        orderNumber: 'WO-20240611-002',
-        deviceCode: 'FCC-001',
-        workType: '故障维修',
-        description: '催化裂化装置1号再生器料位偏高，检查料腿疏通',
-        spareParts: JSON.stringify([{ code: 'SP-003', quantity: 3, name: '温度变送器PT100' }]),
-        priority: 'high',
-        status: 'in_progress',
-        assignedTeam: '维修一班',
-        assignee: '王海峰',
-        plannedDate: '2024-06-11',
-        laborHours: 8
-      },
-      {
-        orderNumber: 'WO-20240612-003',
-        deviceCode: 'HDT-001',
-        workType: '预防性维护',
-        description: '加氢裂化装置1号高压换热器定期检测',
-        spareParts: JSON.stringify([{ code: 'SP-004', quantity: 2, name: '压力传感器' }, { code: 'SP-005', quantity: 1, name: '换热器管束' }]),
-        priority: 'medium',
-        status: 'pending',
-        plannedDate: '2024-06-15',
-        laborHours: 12
-      },
-      {
-        orderNumber: 'WO-20240612-004',
-        deviceCode: 'VR-001',
-        workType: '检查',
-        description: '减压蒸馏装置1号炉管壁厚检测',
-        spareParts: '',
-        priority: 'low',
-        status: 'pending',
-        plannedDate: '2024-06-18',
-        laborHours: 4
-      },
-      {
-        orderNumber: 'WO-20240609-005',
-        deviceCode: 'CDU-002',
-        workType: '大修',
-        description: '常压蒸馏装置2号年度大修，全面检查更换',
-        spareParts: JSON.stringify([{ code: 'SP-001', quantity: 4, name: '高温油泵密封件' }, { code: 'SP-002', quantity: 2, name: '压力容器安全阀' }, { code: 'SP-006', quantity: 500, name: '催化剂' }]),
-        priority: 'high',
-        status: 'in_progress',
-        assignedTeam: '维修二班',
-        assignee: '赵明辉',
-        plannedDate: '2024-06-05',
-        laborHours: 40
-      }
-    ];
-    await orderRepo.save(workOrders);
-    console.log('已初始化维保工单数据');
+  const defaultOrders = [
+    {
+      orderNumber: 'WO-20240610-001',
+      deviceCode: 'CDU-001',
+      workType: '预防性维护',
+      description: '常压蒸馏装置1号例行巡检及密封件检查更换',
+      spareParts: JSON.stringify([{ code: 'SP-001', quantity: 2, name: '高温油泵密封件' }]),
+      priority: 'medium',
+      status: 'completed',
+      assignedTeam: '维修一班',
+      assignee: '孙伟',
+      plannedDate: '2024-06-08',
+      completedDate: '2024-06-09',
+      laborHours: 6,
+      remarks: '常规预防性维护，已更换密封件2套'
+    },
+    {
+      orderNumber: 'WO-20240611-002',
+      deviceCode: 'FCC-001',
+      workType: '故障维修',
+      description: '催化裂化装置1号再生器料位偏高，检查料腿疏通',
+      spareParts: JSON.stringify([{ code: 'SP-003', quantity: 3, name: '温度变送器PT100' }]),
+      priority: 'high',
+      status: 'in_progress',
+      assignedTeam: '维修一班',
+      assignee: '王海峰',
+      plannedDate: '2024-06-11',
+      laborHours: 8
+    },
+    {
+      orderNumber: 'WO-20240612-003',
+      deviceCode: 'HDT-001',
+      workType: '预防性维护',
+      description: '加氢裂化装置1号高压换热器定期检测',
+      spareParts: JSON.stringify([{ code: 'SP-004', quantity: 2, name: '压力传感器' }, { code: 'SP-005', quantity: 1, name: '换热器管束' }]),
+      priority: 'medium',
+      status: 'pending',
+      plannedDate: '2024-06-15',
+      laborHours: 12
+    },
+    {
+      orderNumber: 'WO-20240612-004',
+      deviceCode: 'VR-001',
+      workType: '检查',
+      description: '减压蒸馏装置1号炉管壁厚检测',
+      spareParts: '',
+      priority: 'low',
+      status: 'pending',
+      plannedDate: '2024-06-18',
+      laborHours: 4
+    },
+    {
+      orderNumber: 'WO-20240609-005',
+      deviceCode: 'CDU-002',
+      workType: '大修',
+      description: '常压蒸馏装置2号年度大修，全面检查更换',
+      spareParts: JSON.stringify([{ code: 'SP-001', quantity: 4, name: '高温油泵密封件' }, { code: 'SP-002', quantity: 2, name: '压力容器安全阀' }, { code: 'SP-006', quantity: 500, name: '催化剂' }]),
+      priority: 'high',
+      status: 'in_progress',
+      assignedTeam: '维修二班',
+      assignee: '赵明辉',
+      plannedDate: '2024-06-05',
+      laborHours: 40
+    }
+  ];
+  let orderAdded = 0;
+  for (const o of defaultOrders) {
+    const existing = await orderRepo.findOne({ where: { orderNumber: o.orderNumber } });
+    if (!existing) {
+      await orderRepo.save(o);
+      orderAdded++;
+    }
+  }
+  if (orderAdded > 0) {
+    console.log(`已补齐 ${orderAdded} 条维保工单数据`);
   }
 
   const alarmRepo = dataSource.getRepository(Alarm);

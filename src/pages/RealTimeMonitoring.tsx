@@ -14,12 +14,12 @@ const { Option } = Select;
 
 const RealTimeMonitoring: React.FC = () => {
   const { devices, deviceStatuses, alarms, loadAll, saveAlarm, historyData, historyDataInitialized, initHistoryData, updateHistoryData } = useAppStore();
-  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [acknowledgeModal, setAcknowledgeModal] = useState<Alarm | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [form] = Form.useForm();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const initializedRef = useRef(false);
+  const paramRecoveredRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     const init = async () => {
@@ -44,7 +44,7 @@ const RealTimeMonitoring: React.FC = () => {
 
     updateHistoryData(prev => {
       const newData = { ...prev };
-      const now = dayjs().format('HH:mm');
+      const now = dayjs().format('HH:mm:ss');
       deviceStatuses.forEach(st => {
         ['temperature', 'pressure', 'level'].forEach(param => {
           const key = `${st.deviceCode}-${param}`;
@@ -74,6 +74,7 @@ const RealTimeMonitoring: React.FC = () => {
               let threshold: number | null = null;
               let isOverLimit = false;
               let direction: 'high' | 'low' | null = null;
+              let isNormal = false;
 
               if (param === 'temperature') {
                 if (newVal > device.temperatureMax) {
@@ -84,6 +85,8 @@ const RealTimeMonitoring: React.FC = () => {
                   threshold = device.temperatureMin;
                   isOverLimit = true;
                   direction = 'low';
+                } else {
+                  isNormal = true;
                 }
               } else if (param === 'pressure') {
                 if (newVal > device.pressureMax) {
@@ -94,6 +97,8 @@ const RealTimeMonitoring: React.FC = () => {
                   threshold = device.pressureMin;
                   isOverLimit = true;
                   direction = 'low';
+                } else {
+                  isNormal = true;
                 }
               } else if (param === 'level') {
                 if (newVal > 90) {
@@ -104,7 +109,13 @@ const RealTimeMonitoring: React.FC = () => {
                   threshold = 20;
                   isOverLimit = true;
                   direction = 'low';
+                } else {
+                  isNormal = true;
                 }
+              }
+
+              if (isNormal) {
+                paramRecoveredRef.current[key] = true;
               }
 
               if (isOverLimit && threshold !== null) {
@@ -118,7 +129,16 @@ const RealTimeMonitoring: React.FC = () => {
                   (a.parameterKey === param || a.parameter === paramLabels[param]) &&
                   a.status === 'active'
                 );
-                if (!existingActiveAlarm) {
+                const lastAckAlarm = alarms.filter(a =>
+                  a.deviceCode === st.deviceCode &&
+                  (a.parameterKey === param || a.parameter === paramLabels[param]) &&
+                  a.status === 'acknowledged'
+                ).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
+
+                const hasRecoveredSinceAck = paramRecoveredRef.current[key] !== false;
+                const canCreateNew = !existingActiveAlarm && (!lastAckAlarm || hasRecoveredSinceAck);
+
+                if (canCreateNew) {
                   const paramUnits: Record<string, string> = {
                     temperature: '°C',
                     pressure: 'MPa',
@@ -171,6 +191,7 @@ const RealTimeMonitoring: React.FC = () => {
                   };
 
                   pendingAlarms.push(newAlarm);
+                  paramRecoveredRef.current[key] = false;
                 }
               }
             }
@@ -247,6 +268,10 @@ const RealTimeMonitoring: React.FC = () => {
         acknowledgedAt: new Date().toISOString(),
         actionTaken: values.action
       });
+      if (acknowledgeModal.parameterKey) {
+        const key = `${acknowledgeModal.deviceCode}-${acknowledgeModal.parameterKey}`;
+        paramRecoveredRef.current[key] = false;
+      }
       message.success('报警已确认');
       setAcknowledgeModal(null);
       loadAll();
@@ -344,21 +369,18 @@ const RealTimeMonitoring: React.FC = () => {
         </Col>
       </Row>
 
-      <Card title="装置运行概览" extra={<span style={{ color: '#8c8c8c' }}>点击装置查看详细趋势</span>}>
+      <Card title="装置运行概览">
         <Row gutter={[16, 16]}>
           {runningDevices.map(device => {
             const status = deviceStatuses.find(s => s.deviceCode === device.code);
-            const isSelected = selectedDevice === device.code;
             const isWarning = status?.healthStatus === 'warning';
             return (
               <Col span={6} key={device.code}>
                 <Card
                   hoverable
-                  onClick={() => setSelectedDevice(isSelected ? null : device.code)}
                   style={{
-                    borderColor: isSelected ? '#1677ff' : isWarning ? '#faad14' : undefined,
-                    borderWidth: isSelected || isWarning ? 2 : 1,
-                    boxShadow: isSelected ? '0 2px 8px rgba(22,119,255,0.2)' : undefined
+                    borderColor: isWarning ? '#faad14' : undefined,
+                    borderWidth: isWarning ? 2 : 1
                   }}
                   size="small"
                   title={
@@ -416,62 +438,50 @@ const RealTimeMonitoring: React.FC = () => {
         </Row>
       </Card>
 
-      {selectedDevice && (() => {
-        const device = devices.find(d => d.code === selectedDevice);
-        const status = deviceStatuses.find(s => s.deviceCode === selectedDevice);
-        if (!device) return null;
-        return (
-          <Card title={`${device.name} - 实时趋势监测`} extra={<Tag color={HEALTH_STATUS[status?.healthStatus || 'normal']?.color}>{HEALTH_STATUS[status?.healthStatus || 'normal']?.label}</Tag>}>
-            <Row gutter={16}>
-              <Col span={8}>
-                <Card size="small" title={<span><FireOutlined style={{ color: '#ff4d4f' }} /> 反应温度</span>} extra={<span style={{ fontSize: 18, fontWeight: 600, color: '#ff4d4f' }}>{status?.temperature.toFixed(1)} ℃</span>}>
-                  <ReactECharts option={getTrendChartOption(selectedDevice, 'temperature', '温度', device.temperatureMin, device.temperatureMax, '℃')} style={{ height: 180 }} />
-                </Card>
-              </Col>
-              <Col span={8}>
-                <Card size="small" title={<span><DashboardOutlined style={{ color: '#1677ff' }} /> 系统压力</span>} extra={<span style={{ fontSize: 18, fontWeight: 600, color: '#1677ff' }}>{status?.pressure.toFixed(2)} MPa</span>}>
-                  <ReactECharts option={getTrendChartOption(selectedDevice, 'pressure', '压力', device.pressureMin, device.pressureMax, 'MPa')} style={{ height: 180 }} />
-                </Card>
-              </Col>
-              <Col span={8}>
-                <Card size="small" title={<span><ExperimentOutlined style={{ color: '#52c41a' }} /> 液位</span>} extra={<span style={{ fontSize: 18, fontWeight: 600, color: '#52c41a' }}>{status?.level.toFixed(1)} %</span>}>
-                  <ReactECharts option={getTrendChartOption(selectedDevice, 'level', '液位', 0, 100, '%')} style={{ height: 180 }} />
-                </Card>
-              </Col>
-            </Row>
-            <Divider />
-            <Row gutter={16}>
-              <Col span={6}>
-                <Card size="small">
-                  <Statistic title="进料流量" value={status?.flowRate || 0} suffix="吨/时" />
-                </Card>
-              </Col>
-              <Col span={6}>
-                <Card size="small">
-                  <Statistic title="当前产量" value={status?.currentOutput || 0} suffix="吨/时" />
-                </Card>
-              </Col>
-              <Col span={6}>
-                <Card size="small">
-                  <Statistic title="安全温度范围" value={`${device.temperatureMin} - ${device.temperatureMax}`} suffix="℃" valueStyle={{ fontSize: 16 }} />
-                </Card>
-              </Col>
-              <Col span={6}>
-                <Card size="small">
-                  <Statistic title="安全压力范围" value={`${device.pressureMin} - ${device.pressureMax}`} suffix="MPa" valueStyle={{ fontSize: 16 }} />
-                </Card>
-              </Col>
-            </Row>
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginTop: 16 }}
-              message="自动控制策略"
-              description="当前温度、压力在安全范围内，自动调节系统运行正常。如参数超阈值，将自动联动调节阀门；超临界值触发联锁停车保护。"
-            />
-          </Card>
-        );
-      })()}
+      <Card title="实时趋势监测" extra={<Tag color="green">持续采集</Tag>}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {runningDevices.map(device => {
+            const status = deviceStatuses.find(s => s.deviceCode === device.code);
+            const healthColor = HEALTH_STATUS[status?.healthStatus || 'normal']?.color || '#52c41a';
+            const healthLabel = HEALTH_STATUS[status?.healthStatus || 'normal']?.label || '正常';
+            return (
+              <Card
+                key={device.code}
+                size="small"
+                title={
+                  <Space>
+                    <ThunderboltOutlined style={{ color: '#52c41a' }} />
+                    {device.name}
+                    <Tag color={healthColor}>{healthLabel}</Tag>
+                  </Space>
+                }
+                extra={<span style={{ fontSize: 12, color: '#8c8c8c' }}>{DEVICE_TYPES[device.type]}</span>}
+              >
+                <Row gutter={16}>
+                  <Col span={8}>
+                    <Card size="small" title={<span><FireOutlined style={{ color: '#ff4d4f' }} /> 反应温度</span>} extra={<span style={{ fontSize: 16, fontWeight: 600, color: '#ff4d4f' }}>{status?.temperature.toFixed(1)} ℃</span>}>
+                      <ReactECharts option={getTrendChartOption(device.code, 'temperature', '温度', device.temperatureMin, device.temperatureMax, '℃')} style={{ height: 160 }} />
+                    </Card>
+                  </Col>
+                  <Col span={8}>
+                    <Card size="small" title={<span><DashboardOutlined style={{ color: '#1677ff' }} /> 系统压力</span>} extra={<span style={{ fontSize: 16, fontWeight: 600, color: '#1677ff' }}>{status?.pressure.toFixed(2)} MPa</span>}>
+                      <ReactECharts option={getTrendChartOption(device.code, 'pressure', '压力', device.pressureMin, device.pressureMax, 'MPa')} style={{ height: 160 }} />
+                    </Card>
+                  </Col>
+                  <Col span={8}>
+                    <Card size="small" title={<span><ExperimentOutlined style={{ color: '#52c41a' }} /> 液位</span>} extra={<span style={{ fontSize: 16, fontWeight: 600, color: '#52c41a' }}>{status?.level.toFixed(1)} %</span>}>
+                      <ReactECharts option={getTrendChartOption(device.code, 'level', '液位', 0, 100, '%')} style={{ height: 160 }} />
+                    </Card>
+                  </Col>
+                </Row>
+              </Card>
+            );
+          })}
+          {runningDevices.length === 0 && (
+            <Empty description="暂无运行装置" />
+          )}
+        </div>
+      </Card>
 
       <Card title="报警管理" extra={<Tag color="red">实时更新</Tag>}>
         <Table
